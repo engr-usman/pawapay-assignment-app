@@ -1,0 +1,10 @@
+apiVersion: v2
+name: assignment-app
+description: "Client IP capture application for pawaPay assignment"
+type: application
+version: 0.1.0
+
+dependencies:
+  - name: application-helm
+    version: 0.0.15
+    repository: https://pawapay.github.io/application-helm

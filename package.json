@@ -1,0 +1,13 @@
+{
+  "name": "assignment-app",
+  "version": "1.0.0",
+  "description": "Client IP capture demo app for pawaPay assignment",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "pg": "^8.12.0"
+  }
+}

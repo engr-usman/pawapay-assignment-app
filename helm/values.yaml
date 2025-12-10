@@ -1,0 +1,63 @@
+applicationName: assignment-app
+environment: dev
+
+deployment:
+  replicas: 2
+
+  image:
+    repository: "821106082324.dkr.ecr.us-east-1.amazonaws.com/assignment-app"
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+  env:
+    - name: PORT
+      value: "8080"
+
+    - name: DB_HOST
+      value: "assignmentdb.cxdujekzuvzp.us-east-1.rds.amazonaws.com"
+    - name: DB_PORT
+      value: "5432"
+    - name: DB_NAME
+      value: "postgres"
+
+    - name: DB_USER
+      valueFrom:
+        secretKeyRef:
+          name: assignment/rds/creds
+          key: username
+
+    - name: DB_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: assignment/rds/creds
+          key: password
+
+  probes:
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: web
+    readinessProbe:
+      httpGet:
+        path: /healthz
+        port: web
+
+service:
+  type: ClusterIP
+  ingress_port: 8080
+  ports:
+    - web: 8080
+
+ingresses:
+  enabled: true
+  manifests:
+    - nameSuffix: ""
+      annotations:
+        kubernetes.io/ingress.class: nginx
+      hosts:
+        - host: ""
+          paths:
+            - path: /client-ip
+              pathType: Prefix
+            - path: /client-ip/list
+              pathType: Prefix

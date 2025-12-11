@@ -12,14 +12,13 @@ The service is written in Node.js (Express), packaged using Docker, and deployed
 
 ## 🚀 Features
 
-- ✅ Capture client public IP from `X-Forwarded-For` or socket
+- ✅ Capture client public IP 
 - ✅ Store IPs in PostgreSQL 15.x hosted on AWS RDS
 - ✅ Fetch list of all stored IP entries
 - ✅ Lightweight REST API built on Express.js
 - ✅ Dockerized for containerized deployments
 - ✅ Helm chart for Kubernetes deployments (EKS)
 - ✅ GitHub Actions workflow for CI/CD & ECR image publishing
-- ✅ Health-check endpoint for liveness/readiness probes
 
 ---
 
@@ -135,6 +134,47 @@ curl http://localhost:8080/client-ip/list
 ---
 
 ## ☸️ Helm Deployment (EKS)
+
+---
+
+## 🔧 Kubernetes Probes Notice (Disabled for This Assignment)
+
+The default `application-helm` dependency chart includes **liveness**, **readiness**, and **startup** probes designed for Java Spring Boot applications using the `/actuator/health` endpoint.
+
+Since this project is a **Node.js Express** service, these probes were causing repeated failures (`strconv.Atoi: parsing "actuator": invalid syntax`) and preventing the pod from reaching `READY 1/1`.
+
+For this assignment and to ensure stable deployment on EKS:
+
+### ✅ All health probes have been disabled
+This was done in `values.yaml` by removing the `probes:` block or overriding it with:
+
+```yaml
+application-helm:
+  deployment:
+    probes: {}
+```
+
+This allows the pod to run normally without failing unnecessary health checks.
+
+📌 *Note:* Probes should be re-enabled in production with correct endpoints (e.g., `/healthz`). A recommended probe configuration for the Express app will look like:
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: web
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: web
+  initialDelaySeconds: 5
+  periodSeconds: 10
+```
+
+---
 
 ### Add the Dependency Repository
 

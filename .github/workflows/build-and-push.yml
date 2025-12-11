@@ -1,4 +1,4 @@
-name: Build and Push to ECR
+name: Build, Push to ECR, and Deploy to EKS
 
 on:
   push:
@@ -6,33 +6,85 @@ on:
   workflow_dispatch: {}
 
 env:
-  AWS_REGION: us-east-1        # update
+  AWS_REGION: us-east-1
   ECR_REPOSITORY: assignment-app
+  EKS_CLUSTER_NAME: assignment-dev
+  EKS_NAMESPACE: assignment-app
+  HELM_RELEASE: assignment-app
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
-  build-and-push:
+  build-push-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      # -------------------------------
+      # AWS AUTH USING OIDC (NO SECRET KEYS)
+      # -------------------------------
+      - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::821106082324:role/GitHubActionsRole
+          role-session-name: GitHubActionsDeployment
           aws-region: ${{ env.AWS_REGION }}
 
+      # -------------------------------
+      # Login to ECR
+      # -------------------------------
       - name: Login to Amazon ECR
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push image
+      # -------------------------------
+      # Build & Push Docker Image
+      # -------------------------------
+      - name: Build and Push Image to ECR
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
         run: |
-          IMAGE_TAG=${GITHUB_SHA::7}
+          IMAGE_TAG=v1
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      # -------------------------------
+      # INSTALL AWS CLI, kubectl, and helm
+      # -------------------------------
+      - name: Install kubectl
+        run: |
+          curl -o kubectl https://amazon-eks.s3.us-west-2.amazonaws.com/1.29.0/2024-01-04/bin/linux/amd64/kubectl
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+
+      - name: Install Helm
+        run: |
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      # -------------------------------
+      # CONNECT TO EKS CLUSTER
+      # -------------------------------
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
+
+      - name: Verify Kubernetes Access
+        run: kubectl get nodes
+
+      # -------------------------------
+      # DEPLOY HELM CHART
+      # -------------------------------
+      - name: Deploy to EKS using Helm
+        run: |
+          helm upgrade --install $HELM_RELEASE ./helm \
+            --namespace $EKS_NAMESPACE \
+            --create-namespace
+
+      - name: Check Deployment Status
+        run: |
+          kubectl rollout status deployment/$HELM_RELEASE -n $EKS_NAMESPACE

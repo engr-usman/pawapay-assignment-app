@@ -24,9 +24,9 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # -------------------------------
+      # ----------------------------------------------------
       # AWS AUTH USING OIDC (NO SECRET KEYS)
-      # -------------------------------
+      # ----------------------------------------------------
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -34,28 +34,30 @@ jobs:
           role-session-name: GitHubActionsDeployment
           aws-region: ${{ env.AWS_REGION }}
 
-      # -------------------------------
-      # Login to ECR
-      # -------------------------------
+      # ----------------------------------------------------
+      # LOGIN TO ECR
+      # ----------------------------------------------------
       - name: Login to Amazon ECR
-        id: ecr-login
+        id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # -------------------------------
-      # Build & Push Docker Image
-      # -------------------------------
-      - name: Build and Push Image to ECR
+      # ----------------------------------------------------
+      # BUILD & PUSH DOCKER IMAGE
+      # ----------------------------------------------------
+      - name: Build & Push Image to ECR
         env:
-          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
         run: |
           IMAGE_TAG=v1
+          echo "Building Docker image..."
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          echo "Pushing Docker image..."
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "IMAGE_URI=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_ENV
 
-      # -------------------------------
-      # INSTALL AWS CLI, kubectl, and helm
-      # -------------------------------
+      # ----------------------------------------------------
+      # INSTALL kubectl AND HELM
+      # ----------------------------------------------------
       - name: Install kubectl
         run: |
           curl -o kubectl https://amazon-eks.s3.us-west-2.amazonaws.com/1.29.0/2024-01-04/bin/linux/amd64/kubectl
@@ -66,9 +68,9 @@ jobs:
         run: |
           curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-      # -------------------------------
+      # ----------------------------------------------------
       # CONNECT TO EKS CLUSTER
-      # -------------------------------
+      # ----------------------------------------------------
       - name: Update kubeconfig
         run: |
           aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
@@ -76,14 +78,26 @@ jobs:
       - name: Verify Kubernetes Access
         run: kubectl get nodes
 
-      # -------------------------------
-      # DEPLOY HELM CHART
-      # -------------------------------
-      - name: Deploy to EKS using Helm
+      # ----------------------------------------------------
+      # NEW STAGE: BUILD HELM DEPENDENCIES
+      # REQUIRED FOR APPLICATION-HELM DEPENDENCY
+      # ----------------------------------------------------
+      - name: Build Helm Dependencies
+        run: |
+          echo "Building Helm dependencies..."
+          helm dependency build ./helm
+          echo "Dependency build completed."
+
+      # ----------------------------------------------------
+      # DEPLOY USING HELM
+      # ----------------------------------------------------
+      - name: Deploy to EKS
         run: |
           helm upgrade --install $HELM_RELEASE ./helm \
             --namespace $EKS_NAMESPACE \
-            --create-namespace
+            --create-namespace \
+            --set application-helm.deployment.image.repository=$(echo $IMAGE_URI | cut -d: -f1) \
+            --set application-helm.deployment.image.tag=$(echo $IMAGE_URI | cut -d: -f2)
 
       - name: Check Deployment Status
         run: |

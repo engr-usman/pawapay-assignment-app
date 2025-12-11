@@ -2,6 +2,7 @@ apiVersion: v2
 name: assignment-app
 version: 1.0.0
 description: Assignment application using pawaPay base chart
+type: application
 
 dependencies:
   - name: application-helm
